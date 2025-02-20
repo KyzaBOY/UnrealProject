@@ -44,9 +44,14 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Network")
     void SendAsyncPacket(FString SocketID, FString PacketData);
 
+    FCriticalSection ClientSocketsMutex;
+    TMap<FString, FSocket*> ClientSockets;
+
 private:
     FSocket* ServerSocket;
-    TMap<FString, FSocket*> ClientSockets;
+    
     FRunnableThread* ServerThread;
     MuServerReceiveThread* ReceiveThread;
+      // 🔒 Mutex para sincronizar acessos ao mapa
+
 };

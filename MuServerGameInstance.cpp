@@ -85,26 +85,40 @@ void UMuServerGameInstance::StopServer()
 // 📌 Enviar pacotes de forma assíncrona
 void UMuServerGameInstance::SendAsyncPacket(FString SocketID, FString PacketData)
 {
+    UE_LOG(LogTemp, Log, TEXT("📤 Tentando enviar pacote para SocketID: %s"), *SocketID);
+
     AsyncTask(ENamedThreads::AnyBackgroundThreadNormalTask, [this, SocketID, PacketData]()
         {
+            FSocket* ClientSocket = nullptr;
+
+            // 🔒 Bloqueia o acesso ao mapa para evitar concorrência
+            ClientSocketsMutex.Lock();
             if (ClientSockets.Contains(SocketID))
             {
-                FSocket* ClientSocket = ClientSockets[SocketID];
-                if (ClientSocket)
-                {
-                    FTCHARToUTF8 Converter(*PacketData);
-                    int32 BytesSent = 0;
-                    bool bSuccess = ClientSocket->Send((uint8*)Converter.Get(), Converter.Length(), BytesSent);
+                ClientSocket = ClientSockets[SocketID];
+            }
+            ClientSocketsMutex.Unlock();  // 🔓 Libera o acesso
 
-                    if (bSuccess)
-                    {
-                        UE_LOG(LogTemp, Log, TEXT("Pacote enviado para %s (%d bytes): %s"), *SocketID, BytesSent, *PacketData);
-                    }
-                    else
-                    {
-                        UE_LOG(LogTemp, Error, TEXT("Falha ao enviar pacote para %s!"), *SocketID);
-                    }
-                }
+            if (!ClientSocket)
+            {
+                UE_LOG(LogTemp, Error, TEXT("❌ ClientSocket é NULL para SocketID: %s"), *SocketID);
+                return;
+            }
+
+            FString PacketFinal = PacketData + TEXT("\nEND");
+            FTCHARToUTF8 Converter(*PacketFinal);
+            int32 BytesSent = 0;
+            bool bSuccess = ClientSocket->Send((uint8*)Converter.Get(), Converter.Length(), BytesSent);
+
+            if (bSuccess)
+            {
+                UE_LOG(LogTemp, Log, TEXT("✅ Pacote enviado para %s (%d bytes): %s"), *SocketID, BytesSent, *PacketFinal);
+            }
+            else
+            {
+                UE_LOG(LogTemp, Error, TEXT("❌ Falha ao enviar pacote para %s!"), *SocketID);
             }
         });
 }
+
+

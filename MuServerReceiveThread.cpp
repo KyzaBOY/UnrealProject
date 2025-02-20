@@ -29,9 +29,11 @@ uint32 MuServerReceiveThread::Run()
             if (NewClient)
             {
                 FString SocketID = FString::Printf(TEXT("%p"), NewClient);
-                ClientSockets.Add(SocketID, NewClient);
+                OwnerServer->ClientSocketsMutex.Lock();
+                OwnerServer->ClientSockets.Add(SocketID, NewClient);
+                OwnerServer->ClientSocketsMutex.Unlock();
 
-                FString IP = TEXT("Desconhecido"); // Podemos melhorar isso depois
+                FString IP = TEXT("Desconhecido");
                 AsyncTask(ENamedThreads::GameThread, [this, SocketID, IP]()
                     {
                         if (OwnerServer)
@@ -44,13 +46,24 @@ uint32 MuServerReceiveThread::Run()
             }
         }
 
-        // 📌 2️⃣ Verificar pacotes recebidos de cada cliente
-        for (auto& Pair : ClientSockets)
+        // 📌 2️⃣ Criamos uma cópia temporária dos clientes para evitar bloqueio do mapa
+        TArray<TPair<FString, FSocket*>> ActiveClients;
+
+        OwnerServer->ClientSocketsMutex.Lock();
+        for (auto& Pair : OwnerServer->ClientSockets)
+        {
+            ActiveClients.Add(Pair);
+        }
+        OwnerServer->ClientSocketsMutex.Unlock();
+
+        // 📌 3️⃣ Processamos pacotes de cada cliente sem travar o mapa global
+        for (auto& Pair : ActiveClients)
         {
             FSocket* Client = Pair.Value;
+            FString SocketID = Pair.Key;
+
             if (!Client || Client->GetConnectionState() != ESocketConnectionState::SCS_Connected)
             {
-                FString SocketID = Pair.Key;
                 FString IP = TEXT("Desconhecido");
 
                 AsyncTask(ENamedThreads::GameThread, [this, SocketID, IP]()
@@ -61,26 +74,33 @@ uint32 MuServerReceiveThread::Run()
                         }
                     });
 
-                ClientSockets.Remove(SocketID);
+                OwnerServer->ClientSocketsMutex.Lock();
+                OwnerServer->ClientSockets.Remove(SocketID);
+                OwnerServer->ClientSocketsMutex.Unlock();
+
                 continue;
             }
 
-            // 📌 Receber dados do cliente
+            // 📡 LOG IMPORTANTE
+            UE_LOG(LogTemp, Log, TEXT("📡 Servidor esperando pacotes do cliente %s..."), *SocketID);
+
             uint8 Buffer[1024];
             int32 BytesRead = 0;
+
             if (Client->Recv(Buffer, sizeof(Buffer), BytesRead))
             {
                 if (BytesRead > 0)
                 {
                     FString ReceivedData = FString(UTF8_TO_TCHAR((const char*)Buffer));
 
-                    UE_LOG(LogTemp, Log, TEXT("📩 Pacote recebido de %s: %s"), *Pair.Key, *ReceivedData);
+                    UE_LOG(LogTemp, Log, TEXT("📩 Pacote recebido de %s: %s"), *SocketID, *ReceivedData);
 
-                    // 🔹 Garantir que o processamento do pacote aconteça na GameThread!
-                    AsyncTask(ENamedThreads::GameThread, [this, ReceivedData, SocketID = Pair.Key]()
+                    // 🔹 Criamos uma Tarefa Assíncrona para processar o pacote
+                    AsyncTask(ENamedThreads::AnyBackgroundThreadNormalTask, [this, ReceivedData, SocketID]()
                         {
                             if (OwnerServer)
                             {
+                                UE_LOG(LogTemp, Log, TEXT("📦 Processando pacote de %s na Thread de Processamento"), *SocketID);
                                 OwnerServer->OnClientPacketReceived.Broadcast(SocketID, ReceivedData);
                             }
                         });

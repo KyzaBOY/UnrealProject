@@ -23,6 +23,7 @@ uint32 MuClientReceiveThread::Run()
     {
         uint8 Buffer[1024];
         int32 BytesRead = 0;
+        UE_LOG(LogTemp, Log, TEXT("📡 Cliente esperando pacotes do Servidor..."));
 
         if (ClientSocket->Recv(Buffer, sizeof(Buffer), BytesRead))
         {
