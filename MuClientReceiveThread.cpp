@@ -16,38 +16,36 @@ MuClientReceiveThread::~MuClientReceiveThread()
     bRunning = false;
 }
 
-// 📌 Método principal da thread
 uint32 MuClientReceiveThread::Run()
 {
     while (bRunning && ClientSocket && ClientSocket->GetConnectionState() == ESocketConnectionState::SCS_Connected)
     {
-        uint8 Buffer[1024];
+        uint16 PacketSize = 0;
         int32 BytesRead = 0;
-        UE_LOG(LogTemp, Log, TEXT("📡 Cliente esperando pacotes do Servidor..."));
 
-        if (ClientSocket->Recv(Buffer, sizeof(Buffer), BytesRead))
+        if (!ClientSocket->Recv((uint8*)&PacketSize, sizeof(uint16), BytesRead) || BytesRead != sizeof(uint16))
         {
-            FString ReceivedData = FString(UTF8_TO_TCHAR((const char*)Buffer));
+            continue; // Se falhar, ignoramos
+        }
 
-            // 🔹 Separar múltiplos pacotes corretamente usando "\nEND"
-            TArray<FString> Packets;
-            ReceivedData.ParseIntoArray(Packets, TEXT("\nEND"), true);
+        TArray<uint8> PacketBuffer;
+        PacketBuffer.SetNum(PacketSize);
+        if (!ClientSocket->Recv(PacketBuffer.GetData(), PacketSize, BytesRead) || BytesRead != PacketSize)
+        {
+            continue; // Se falhar, ignoramos
+        }
 
-            for (FString Packet : Packets)
-            {
-                if (Packet.IsEmpty()) continue;  // Ignorar pacotes vazios
+        FString ReceivedData = FString(UTF8_TO_TCHAR((const char*)PacketBuffer.GetData()));
 
-                UE_LOG(LogTemp, Log, TEXT("Pacote recebido: %s"), *Packet);
+        UE_LOG(LogTemp, Log, TEXT("📩 Pacote recebido: %s"), *ReceivedData);
 
-                // 📌 Garantir que o evento rode na Game Thread!
-                if (OwnerClient)
+        // 🔹 Processar o pacote na Game Thread
+        if (OwnerClient)
+        {
+            AsyncTask(ENamedThreads::GameThread, [this, ReceivedData]()
                 {
-                    AsyncTask(ENamedThreads::GameThread, [this, Packet]()
-                        {
-                            OwnerClient->OnPacketReceived.Broadcast(Packet);
-                        });
-                }
-            }
+                    OwnerClient->OnPacketReceived.Broadcast(ReceivedData);
+                });
         }
     }
 

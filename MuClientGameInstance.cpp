@@ -90,22 +90,35 @@ void UMuClientGameInstance::SendAsyncPacket(FString Data)
         {
             if (!ClientSocket)
             {
-                UE_LOG(LogTemp, Error, TEXT("Socket não conectado!"));
+                UE_LOG(LogTemp, Error, TEXT("❌ Socket não conectado!"));
                 return;
             }
 
-            FString PacketData = Data + TEXT("\nEND");
-            FTCHARToUTF8 Converter(*PacketData);
+            FTCHARToUTF8 Converter(*Data);
+            int32 DataSize = Converter.Length();
+
+            // Criando buffer de envio
+            TArray<uint8> Buffer;
+            Buffer.SetNum(2 + DataSize);
+
+            // Inserindo o tamanho do pacote nos primeiros 2 bytes
+            uint16 PacketSize = static_cast<uint16>(DataSize);
+            FMemory::Memcpy(Buffer.GetData(), &PacketSize, sizeof(uint16));
+
+            // Copiando os dados para o buffer
+            FMemory::Memcpy(Buffer.GetData() + 2, Converter.Get(), DataSize);
+
+            // Enviar o pacote completo
             int32 BytesSent = 0;
-            bool bSuccess = ClientSocket->Send((uint8*)Converter.Get(), Converter.Length(), BytesSent);
+            bool bSuccess = ClientSocket->Send(Buffer.GetData(), Buffer.Num(), BytesSent);
 
             if (bSuccess)
             {
-                UE_LOG(LogTemp, Log, TEXT("Pacote enviado (%d bytes): %s"), BytesSent, *PacketData);
+                UE_LOG(LogTemp, Log, TEXT("✅ Pacote enviado (%d bytes): %s"), BytesSent, *Data);
             }
             else
             {
-                UE_LOG(LogTemp, Error, TEXT("Falha ao enviar pacote!"));
+                UE_LOG(LogTemp, Error, TEXT("❌ Falha ao enviar pacote!"));
             }
         });
 }

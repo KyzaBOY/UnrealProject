@@ -16,12 +16,11 @@ MuServerReceiveThread::~MuServerReceiveThread()
     bRunning = false;
 }
 
-// 📌 Método principal da thread
 uint32 MuServerReceiveThread::Run()
 {
     while (bRunning && ServerSocket)
     {
-        // 📌 1️⃣ Verificar novas conexões
+        // 📌 1️⃣ Verificar novas conexões antes de processar pacotes
         bool bPendingConnection = false;
         if (ServerSocket->HasPendingConnection(bPendingConnection) && bPendingConnection)
         {
@@ -34,6 +33,7 @@ uint32 MuServerReceiveThread::Run()
                 OwnerServer->ClientSocketsMutex.Unlock();
 
                 FString IP = TEXT("Desconhecido");
+
                 AsyncTask(ENamedThreads::GameThread, [this, SocketID, IP]()
                     {
                         if (OwnerServer)
@@ -46,9 +46,9 @@ uint32 MuServerReceiveThread::Run()
             }
         }
 
-        // 📌 2️⃣ Criamos uma cópia temporária dos clientes para evitar bloqueio do mapa
         TArray<TPair<FString, FSocket*>> ActiveClients;
 
+        // 🔹 Criamos uma cópia temporária dos clientes conectados
         OwnerServer->ClientSocketsMutex.Lock();
         for (auto& Pair : OwnerServer->ClientSockets)
         {
@@ -56,56 +56,74 @@ uint32 MuServerReceiveThread::Run()
         }
         OwnerServer->ClientSocketsMutex.Unlock();
 
-        // 📌 3️⃣ Processamos pacotes de cada cliente sem travar o mapa global
+        // 📌 Processar pacotes de cada cliente
         for (auto& Pair : ActiveClients)
         {
-            FSocket* Client = Pair.Value;
             FString SocketID = Pair.Key;
+            FSocket* Client = Pair.Value;
 
             if (!Client || Client->GetConnectionState() != ESocketConnectionState::SCS_Connected)
             {
-                FString IP = TEXT("Desconhecido");
+                UE_LOG(LogTemp, Warning, TEXT("⚠️ Cliente desconectado detectado: %s"), *SocketID);
+                OwnerServer->ClientSocketsMutex.Lock();
+                OwnerServer->ClientSockets.Remove(SocketID);
+                OwnerServer->ClientSocketsMutex.Unlock();
 
-                AsyncTask(ENamedThreads::GameThread, [this, SocketID, IP]()
+                // 📌 Emite o evento `OnFinishConnection`
+                AsyncTask(ENamedThreads::GameThread, [this, SocketID]()
                     {
-                        if (OwnerServer)
-                        {
-                            OwnerServer->OnFinishConnection.Broadcast(SocketID, IP);
-                        }
+                        OwnerServer->OnFinishConnection.Broadcast(SocketID, TEXT("Desconhecido"));
                     });
+
+                continue;
+            }
+
+            // 📌 1️⃣ Primeiro, ler os 2 bytes que indicam o tamanho do pacote
+            uint16 PacketSize = 0;
+            int32 BytesRead = 0;
+
+            if (!Client->Recv((uint8*)&PacketSize, sizeof(uint16), BytesRead) || BytesRead == 0)
+            {
+                UE_LOG(LogTemp, Warning, TEXT("⚠️ Cliente %s fechou a conexão inesperadamente. Removendo..."), *SocketID);
 
                 OwnerServer->ClientSocketsMutex.Lock();
                 OwnerServer->ClientSockets.Remove(SocketID);
                 OwnerServer->ClientSocketsMutex.Unlock();
 
+                // 📌 Emite o evento `OnFinishConnection`
+                AsyncTask(ENamedThreads::GameThread, [this, SocketID]()
+                    {
+                        OwnerServer->OnFinishConnection.Broadcast(SocketID, TEXT("Desconhecido"));
+                    });
+
+                continue; // Ignorar leitura de pacotes
+            }
+
+            // 📌 2️⃣ Agora aguarda até receber o pacote completo
+            TArray<uint8> PacketBuffer;
+            PacketBuffer.SetNumUninitialized(PacketSize + 1); // Adiciona espaço para um caractere nulo
+
+            if (!Client->Recv(PacketBuffer.GetData(), PacketSize, BytesRead) || BytesRead != PacketSize)
+            {
+                UE_LOG(LogTemp, Warning, TEXT("⚠️ Falha ao receber pacote completo de %s. Lidos: %d / %d bytes"), *SocketID, BytesRead, PacketSize);
                 continue;
             }
 
-            // 📡 LOG IMPORTANTE
-            UE_LOG(LogTemp, Log, TEXT("📡 Servidor esperando pacotes do cliente %s..."), *SocketID);
+            // 📌 3️⃣ Garantir que o buffer seja tratado corretamente
+            PacketBuffer[PacketSize] = '\0'; // Adiciona um terminador nulo para evitar caracteres extras
 
-            uint8 Buffer[1024];
-            int32 BytesRead = 0;
+            FString ReceivedData = FString(ANSI_TO_TCHAR(reinterpret_cast<const char*>(PacketBuffer.GetData())));
 
-            if (Client->Recv(Buffer, sizeof(Buffer), BytesRead))
-            {
-                if (BytesRead > 0)
+            // 🔹 Remover espaços em branco desnecessários e caracteres extras
+            ReceivedData.TrimStartAndEndInline();
+
+            UE_LOG(LogTemp, Log, TEXT("📩 Pacote recebido de %s (%d bytes): %s"), *SocketID, PacketSize, *ReceivedData);
+
+            // 🔹 Processar o pacote na Game Thread
+            AsyncTask(ENamedThreads::GameThread, [this, ReceivedData, SocketID]()
                 {
-                    FString ReceivedData = FString(UTF8_TO_TCHAR((const char*)Buffer));
-
-                    UE_LOG(LogTemp, Log, TEXT("📩 Pacote recebido de %s: %s"), *SocketID, *ReceivedData);
-
-                    // 🔹 Criamos uma Tarefa Assíncrona para processar o pacote
-                    AsyncTask(ENamedThreads::AnyBackgroundThreadNormalTask, [this, ReceivedData, SocketID]()
-                        {
-                            if (OwnerServer)
-                            {
-                                UE_LOG(LogTemp, Log, TEXT("📦 Processando pacote de %s na Thread de Processamento"), *SocketID);
-                                OwnerServer->OnClientPacketReceived.Broadcast(SocketID, ReceivedData);
-                            }
-                        });
-                }
-            }
+                    OwnerServer->OnClientPacketReceived.Broadcast(SocketID, ReceivedData);
+                });
         }
 
         FPlatformProcess::Sleep(0.01);
@@ -113,6 +131,9 @@ uint32 MuServerReceiveThread::Run()
 
     return 0;
 }
+
+
+
 
 // 📌 Método para parar a thread
 void MuServerReceiveThread::Stop()

@@ -117,6 +117,9 @@ public:
     UFUNCTION(BlueprintCallable, Category = "SQL")
     FString SQLAsyncGetString(const FString& ColumnName);
 
+    UFUNCTION(BlueprintCallable, Category = "Network")
+    void DisconnectPlayer(FString SocketID);
+
     FCriticalSection ClientSocketsMutex;
     TMap<FString, FSocket*> ClientSockets;
 
@@ -131,6 +134,8 @@ private:
     SQLHENV EnvHandle;
     SQLHDBC ConnectionHandle;
     SQLHSTMT StatementHandle;
+
+    int32 GetColumnIndex(const FString& ColumnName);
 
     bool ExecuteQuery(const FString& Query);
 

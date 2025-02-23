@@ -88,7 +88,6 @@ void UMuServerGameInstance::StopServer()
     UE_LOG(LogTemp, Log, TEXT("Servidor desligado com sucesso."));
 }
 
-// 📌 Enviar pacotes de forma assíncrona
 void UMuServerGameInstance::SendAsyncPacket(FString SocketID, FString PacketData)
 {
     UE_LOG(LogTemp, Log, TEXT("📤 Tentando enviar pacote para SocketID: %s"), *SocketID);
@@ -97,28 +96,49 @@ void UMuServerGameInstance::SendAsyncPacket(FString SocketID, FString PacketData
         {
             FSocket* ClientSocket = nullptr;
 
-            // 🔒 Bloqueia o acesso ao mapa para evitar concorrência
+            // 🔒 Acesso seguro ao mapa de sockets
             ClientSocketsMutex.Lock();
             if (ClientSockets.Contains(SocketID))
             {
                 ClientSocket = ClientSockets[SocketID];
             }
-            ClientSocketsMutex.Unlock();  // 🔓 Libera o acesso
+            ClientSocketsMutex.Unlock();
 
             if (!ClientSocket)
             {
                 UE_LOG(LogTemp, Error, TEXT("❌ ClientSocket é NULL para SocketID: %s"), *SocketID);
+                UE_LOG(LogTemp, Error, TEXT("🔎 Cliente pode ter sido removido ou nunca foi adicionado corretamente!"));
                 return;
             }
 
-            FString PacketFinal = PacketData + TEXT("\nEND");
-            FTCHARToUTF8 Converter(*PacketFinal);
+            if (ClientSocket->GetConnectionState() != ESocketConnectionState::SCS_Connected)
+            {
+                UE_LOG(LogTemp, Warning, TEXT("⚠️ O Cliente %s não está mais conectado."), *SocketID);
+                return;
+            }
+
+            // 🔹 Convertendo a string para UTF-8
+            FTCHARToUTF8 Converter(*PacketData);
+            int32 DataSize = Converter.Length();
+
+            // 🔹 Criando um buffer para envio (tamanho + dados)
+            TArray<uint8> Buffer;
+            Buffer.SetNum(2 + DataSize);
+
+            // 🔹 Armazena o tamanho do pacote nos primeiros 2 bytes
+            uint16 PacketSize = static_cast<uint16>(DataSize);
+            FMemory::Memcpy(Buffer.GetData(), &PacketSize, sizeof(uint16));
+
+            // 🔹 Armazena os dados logo em seguida
+            FMemory::Memcpy(Buffer.GetData() + 2, Converter.Get(), DataSize);
+
+            // 🔹 Enviar o pacote completo
             int32 BytesSent = 0;
-            bool bSuccess = ClientSocket->Send((uint8*)Converter.Get(), Converter.Length(), BytesSent);
+            bool bSuccess = ClientSocket->Send(Buffer.GetData(), Buffer.Num(), BytesSent);
 
             if (bSuccess)
             {
-                UE_LOG(LogTemp, Log, TEXT("✅ Pacote enviado para %s (%d bytes): %s"), *SocketID, BytesSent, *PacketFinal);
+                UE_LOG(LogTemp, Log, TEXT("✅ Pacote enviado para %s (%d bytes): %s"), *SocketID, BytesSent, *PacketData);
             }
             else
             {
@@ -126,6 +146,8 @@ void UMuServerGameInstance::SendAsyncPacket(FString SocketID, FString PacketData
             }
         });
 }
+
+
 
 
 bool UMuServerGameInstance::MuSQLConnect(const FString& ODBC, const FString& User, const FString& Password)
@@ -256,29 +278,80 @@ void UMuServerGameInstance::MuSQLClose()
     if (StatementHandle) SQLFreeHandle(SQL_HANDLE_STMT, StatementHandle);
 }
 
-// 📌 Buscar número da consulta
 int32 UMuServerGameInstance::MuSQLGetNumber(const FString& ColumnName)
 {
     int32 Value = 0;
-    SQLGetData(StatementHandle, 1, SQL_C_LONG, &Value, 0, NULL);
-    return Value;
+    int32 ColumnIndex = GetColumnIndex(ColumnName);
+
+    if (ColumnIndex == -1)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ Coluna '%s' não encontrada. Retornando 0."), *ColumnName);
+        return 0;
+    }
+
+    SQLRETURN RetCode = SQLGetData(StatementHandle, ColumnIndex, SQL_C_LONG, &Value, 0, NULL);
+
+    if (RetCode == SQL_SUCCESS || RetCode == SQL_SUCCESS_WITH_INFO)
+    {
+        return Value;
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ Falha ao buscar número da coluna '%s'. Retornando 0."), *ColumnName);
+        return 0;
+    }
 }
 
-// 📌 Buscar float da consulta
+
 float UMuServerGameInstance::MuSQLGetSingle(const FString& ColumnName)
 {
     float Value = 0.0f;
-    SQLGetData(StatementHandle, 1, SQL_C_FLOAT, &Value, 0, NULL);
-    return Value;
+    int32 ColumnIndex = GetColumnIndex(ColumnName);
+
+    if (ColumnIndex == -1)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ Coluna '%s' não encontrada. Retornando 0.0."), *ColumnName);
+        return 0.0f;
+    }
+
+    SQLRETURN RetCode = SQLGetData(StatementHandle, ColumnIndex, SQL_C_FLOAT, &Value, 0, NULL);
+
+    if (RetCode == SQL_SUCCESS || RetCode == SQL_SUCCESS_WITH_INFO)
+    {
+        return Value;
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ Falha ao buscar float da coluna '%s'. Retornando 0.0."), *ColumnName);
+        return 0.0f;
+    }
 }
 
-// 📌 Buscar string da consulta
+
 FString UMuServerGameInstance::MuSQLGetString(const FString& ColumnName)
 {
-    char Value[256];
-    SQLGetData(StatementHandle, 1, SQL_C_CHAR, Value, sizeof(Value), NULL);
-    return FString(Value);
+    char Value[256] = { 0 };
+    int32 ColumnIndex = GetColumnIndex(ColumnName);
+
+    if (ColumnIndex == -1)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ Coluna '%s' não encontrada. Retornando 'NULL'."), *ColumnName);
+        return TEXT("NULL");
+    }
+
+    SQLRETURN RetCode = SQLGetData(StatementHandle, ColumnIndex, SQL_C_CHAR, Value, sizeof(Value), NULL);
+
+    if (RetCode == SQL_SUCCESS || RetCode == SQL_SUCCESS_WITH_INFO)
+    {
+        return FString(Value);
+    }
+    else
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ Falha ao buscar string da coluna '%s'. Retornando 'NULL'."), *ColumnName);
+        return TEXT("NULL");
+    }
 }
+
 
 // 📌 Executar query com parâmetros (interno)
 bool UMuServerGameInstance::ExecuteQuery(const FString& Query)
@@ -378,4 +451,66 @@ float UMuServerGameInstance::SQLAsyncGetSingle(const FString& ColumnName)
 FString UMuServerGameInstance::SQLAsyncGetString(const FString& ColumnName)
 {
     return MuSQLGetString(ColumnName);
+}
+
+int32 UMuServerGameInstance::GetColumnIndex(const FString& ColumnName)
+{
+    if (!StatementHandle)
+    {
+        UE_LOG(LogTemp, Error, TEXT("❌ GetColumnIndex falhou: StatementHandle é inválido."));
+        return -1;
+    }
+
+    SQLSMALLINT NumColumns = 0;
+    SQLNumResultCols(StatementHandle, &NumColumns);
+
+    for (SQLSMALLINT i = 1; i <= NumColumns; i++) // Índice SQL começa em 1
+    {
+        SQLCHAR ColumnNameBuffer[128];
+        SQLSMALLINT ColumnNameLength = 0;
+
+        SQLDescribeColA(StatementHandle, i, ColumnNameBuffer, sizeof(ColumnNameBuffer), &ColumnNameLength, NULL, NULL, NULL, NULL);
+
+        FString ColumnNameSQL = ANSI_TO_TCHAR((char*)ColumnNameBuffer);
+        if (ColumnNameSQL.Equals(ColumnName, ESearchCase::IgnoreCase))
+        {
+            return i; // Retorna o índice correto da coluna
+        }
+    }
+
+    UE_LOG(LogTemp, Warning, TEXT("⚠️ Coluna '%s' não encontrada no resultado da query."), *ColumnName);
+    return -1; // Retorna -1 se não encontrar
+}
+
+void UMuServerGameInstance::DisconnectPlayer(FString SocketID)
+{
+    UE_LOG(LogTemp, Log, TEXT("🔴 Desconectando jogador: %s"), *SocketID);
+
+    ClientSocketsMutex.Lock();
+
+    if (!ClientSockets.Contains(SocketID))
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ Tentativa de desconectar um SocketID inexistente: %s"), *SocketID);
+        ClientSocketsMutex.Unlock();
+        return;
+    }
+
+    FSocket* ClientSocket = ClientSockets[SocketID];
+
+    if (ClientSocket)
+    {
+        ClientSocket->Close(); // Fecha a conexão de forma segura
+        ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM)->DestroySocket(ClientSocket);
+    }
+
+    ClientSockets.Remove(SocketID);
+    ClientSocketsMutex.Unlock();
+
+    // 📌 Emite o evento de desconexão para os Blueprints
+    AsyncTask(ENamedThreads::GameThread, [this, SocketID]()
+        {
+            OnFinishConnection.Broadcast(SocketID, TEXT("Desconhecido"));
+        });
+
+    UE_LOG(LogTemp, Log, TEXT("✅ Jogador %s foi desconectado com sucesso!"), *SocketID);
 }
