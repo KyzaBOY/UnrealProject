@@ -123,9 +123,12 @@ public:
     FCriticalSection ClientSocketsMutex;
     TMap<FString, FSocket*> ClientSockets;
 
+    TMap<FString, double> LastPacketTime;  // Armazena o tempo do último pacote recebido
+    FCriticalSection LastPacketMutex;      // 🔒 Mutex para evitar concorrência
+
 private:
     FSocket* ServerSocket;
-
+    
     FRunnableThread* ServerThread;
     MuServerReceiveThread* ReceiveThread;
     // 🔒 Mutex para sincronizar acessos ao mapa

@@ -92,6 +92,10 @@ uint32 MuServerReceiveThread::Run()
                         PacketBuffer[PacketSize] = '\0';
                         FString ReceivedData = FString(ANSI_TO_TCHAR(reinterpret_cast<const char*>(PacketBuffer.GetData())));
 
+                        OwnerServer->LastPacketMutex.Lock();
+                        OwnerServer->LastPacketTime.Add(SocketID, FPlatformTime::Seconds());
+                        OwnerServer->LastPacketMutex.Unlock();
+
                         UE_LOG(LogTemp, Log, TEXT("📩 Pacote recebido de %s (%d bytes): %s"), *SocketID, PacketSize, *ReceivedData);
 
                         // 🔹 Processar o pacote na GameThread
@@ -102,6 +106,53 @@ uint32 MuServerReceiveThread::Run()
                     }
                 }
             }
+        }
+
+        // 📌 Criamos um array de clientes para remoção por timeout
+        TArray<FString> TimeoutClients;
+
+        // 🔹 Pegamos o tempo atual
+        double CurrentTime = FPlatformTime::Seconds();
+
+        OwnerServer->LastPacketMutex.Lock();
+        for (const auto& Pair : OwnerServer->LastPacketTime)
+        {
+            FString SocketID = Pair.Key;
+            double LastTime = Pair.Value;
+
+            // 📌 Se passaram mais de 10 segundos desde o último pacote, remover cliente
+            if ((CurrentTime - LastTime) > 50.0)
+            {
+                TimeoutClients.Add(SocketID);
+            }
+        }
+        OwnerServer->LastPacketMutex.Unlock();
+
+        // 📌 Agora removemos os clientes desconectados por timeout
+        if (TimeoutClients.Num() > 0)
+        {
+            OwnerServer->ClientSocketsMutex.Lock();
+            for (const FString& SocketID : TimeoutClients)
+            {
+                FSocket* ClientSocket = OwnerServer->ClientSockets.FindRef(SocketID);
+                if (ClientSocket)
+                {
+                    ClientSocket->Close();
+                    ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM)->DestroySocket(ClientSocket);
+                }
+
+                OwnerServer->ClientSockets.Remove(SocketID);
+                OwnerServer->LastPacketTime.Remove(SocketID); // ✅ Remover do mapa de timestamps também
+
+                // 📌 Emite o evento `OnFinishConnection`
+                AsyncTask(ENamedThreads::GameThread, [this, SocketID]()
+                    {
+                        OwnerServer->OnFinishConnection.Broadcast(SocketID, TEXT("Timeout"));
+                    });
+
+                UE_LOG(LogTemp, Log, TEXT("🔴 Cliente removido por timeout: %s"), *SocketID);
+            }
+            OwnerServer->ClientSocketsMutex.Unlock();
         }
 
         // 📌 Agora removemos os clientes desconectados fora do loop para evitar problemas de concorrência

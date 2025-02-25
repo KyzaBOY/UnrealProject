@@ -23,19 +23,42 @@ uint32 MuClientReceiveThread::Run()
         uint16 PacketSize = 0;
         int32 BytesRead = 0;
 
+        // Ler os primeiros 2 bytes (tamanho do pacote)
         if (!ClientSocket->Recv((uint8*)&PacketSize, sizeof(uint16), BytesRead) || BytesRead != sizeof(uint16))
         {
             continue; // Se falhar, ignoramos
         }
 
+        // Criar buffer do tamanho correto
         TArray<uint8> PacketBuffer;
-        PacketBuffer.SetNum(PacketSize);
-        if (!ClientSocket->Recv(PacketBuffer.GetData(), PacketSize, BytesRead) || BytesRead != PacketSize)
+        PacketBuffer.SetNumUninitialized(PacketSize + 1); // Adiciona espaço para um terminador nulo
+
+        // Ler os dados do pacote
+        int32 TotalBytesRead = 0;
+        while (TotalBytesRead < PacketSize)
         {
-            continue; // Se falhar, ignoramos
+            int32 BytesReadNow = 0;
+            if (!ClientSocket->Recv(PacketBuffer.GetData() + TotalBytesRead, PacketSize - TotalBytesRead, BytesReadNow) || BytesReadNow <= 0)
+            {
+                break; // Se falhar, saímos do loop
+            }
+            TotalBytesRead += BytesReadNow;
         }
 
-        FString ReceivedData = FString(UTF8_TO_TCHAR((const char*)PacketBuffer.GetData()));
+        // Se não lemos o pacote inteiro, ignoramos
+        if (TotalBytesRead != PacketSize)
+        {
+            continue;
+        }
+
+        // Adicionar terminador nulo para evitar lixo
+        PacketBuffer[PacketSize] = '\0';
+
+        // Converter para FString corretamente
+        FString ReceivedData = FString(UTF8_TO_TCHAR(reinterpret_cast<const char*>(PacketBuffer.GetData())));
+
+        // Remover espaços ou caracteres extras
+        ReceivedData.TrimStartAndEndInline();
 
         UE_LOG(LogTemp, Log, TEXT("📩 Pacote recebido: %s"), *ReceivedData);
 
