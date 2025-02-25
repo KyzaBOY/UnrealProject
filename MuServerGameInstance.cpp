@@ -25,7 +25,6 @@ void UMuServerGameInstance::Shutdown()
     Super::Shutdown();
 }
 
-// 📌 Inicia o Servidor
 bool UMuServerGameInstance::StartServer(int32 Port)
 {
     ISocketSubsystem* SocketSubsystem = ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM);
@@ -37,13 +36,24 @@ bool UMuServerGameInstance::StartServer(int32 Port)
         return false;
     }
 
+    // Criando o endereço do servidor
     TSharedPtr<FInternetAddr> ServerAddress = SocketSubsystem->CreateInternetAddr();
-    ServerAddress->SetAnyAddress();
+
+    // 🔹 Definindo o IP específico (substitua pelo seu IP real)
+    bool bIsValid;
+    ServerAddress->SetIp(TEXT("26.195.133.181"), bIsValid);
+
+    if (!bIsValid)
+    {
+        UE_LOG(LogTemp, Error, TEXT("Endereço IP inválido."));
+        return false;
+    }
+
     ServerAddress->SetPort(Port);
 
     if (!ServerSocket->Bind(*ServerAddress))
     {
-        UE_LOG(LogTemp, Error, TEXT("Falha ao vincular o servidor à porta %d."), Port);
+        UE_LOG(LogTemp, Error, TEXT("Falha ao vincular o servidor ao IP %s e porta %d."), *ServerAddress->ToString(true), Port);
         return false;
     }
 
@@ -53,13 +63,14 @@ bool UMuServerGameInstance::StartServer(int32 Port)
         return false;
     }
 
-    UE_LOG(LogTemp, Log, TEXT("Servidor iniciado na porta %d!"), Port);
+    UE_LOG(LogTemp, Log, TEXT("✅ Servidor iniciado no IP %s na porta %d!"), *ServerAddress->ToString(true), Port);
 
     ReceiveThread = new MuServerReceiveThread(ServerSocket, this);
     ServerThread = FRunnableThread::Create(ReceiveThread, TEXT("MuServerReceiveThread"));
 
     return true;
 }
+
 
 void UMuServerGameInstance::StopServer()
 {

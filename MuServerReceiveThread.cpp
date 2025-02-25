@@ -3,14 +3,14 @@
 #include "Async/Async.h"
 
 // Construtor
-MuServerReceiveThread::MuServerReceiveThread(FSocket* InSocket, UMuServerGameInstance* InServer)
+MuServerReceiveThread::MuServerReceiveThread(FSocket * InSocket, UMuServerGameInstance * InServer)
 {
     ServerSocket = InSocket;
     OwnerServer = InServer;
     bRunning = true;
 }
 
-// Destrutor
+// Destrutorqqqqqqq
 MuServerReceiveThread::~MuServerReceiveThread()
 {
     bRunning = false;
@@ -22,7 +22,7 @@ uint32 MuServerReceiveThread::Run()
     {
         // 📌 1️⃣ Verificar novas conexões antes de processar pacotes
         bool bPendingConnection = false;
-        if (ServerSocket->HasPendingConnection(bPendingConnection) && bPendingConnection)
+        if (ServerSocket->HasPendingConnection(bPendingConnection) && bPendingConnection) // ✅ Agora só tenta aceitar 1 conexão por iteração
         {
             FSocket* NewClient = ServerSocket->Accept(TEXT("MuServerClientSocket"));
             if (NewClient)
@@ -46,9 +46,8 @@ uint32 MuServerReceiveThread::Run()
             }
         }
 
-        TArray<TPair<FString, FSocket*>> ActiveClients;
-
         // 🔹 Criamos uma cópia temporária dos clientes conectados
+        TArray<TPair<FString, FSocket*>> ActiveClients;
         OwnerServer->ClientSocketsMutex.Lock();
         for (auto& Pair : OwnerServer->ClientSockets)
         {
@@ -57,80 +56,80 @@ uint32 MuServerReceiveThread::Run()
         OwnerServer->ClientSocketsMutex.Unlock();
 
         // 📌 Processar pacotes de cada cliente
+        TArray<FString> ClientsToRemove; // ✅ Lista temporária para armazenar clientes desconectados
+
         for (auto& Pair : ActiveClients)
         {
             FString SocketID = Pair.Key;
             FSocket* Client = Pair.Value;
 
+            // 🔹 Verificar se o cliente ainda está conectado
             if (!Client || Client->GetConnectionState() != ESocketConnectionState::SCS_Connected)
             {
                 UE_LOG(LogTemp, Warning, TEXT("⚠️ Cliente desconectado detectado: %s"), *SocketID);
-                OwnerServer->ClientSocketsMutex.Lock();
-                OwnerServer->ClientSockets.Remove(SocketID);
-                OwnerServer->ClientSocketsMutex.Unlock();
-
-                // 📌 Emite o evento `OnFinishConnection`
-                AsyncTask(ENamedThreads::GameThread, [this, SocketID]()
-                    {
-                        OwnerServer->OnFinishConnection.Broadcast(SocketID, TEXT("Desconhecido"));
-                    });
-
+                ClientsToRemove.Add(SocketID); // ✅ Adiciona para remoção segura após a iteração
                 continue;
             }
 
-            // 📌 1️⃣ Primeiro, ler os 2 bytes que indicam o tamanho do pacote
+            // 🔹 Verificar se há dados pendentes antes de tentar ler
             uint16 PacketSize = 0;
-            int32 BytesRead = 0;
+            uint8 Buffer[2];
 
-            if (!Client->Recv((uint8*)&PacketSize, sizeof(uint16), BytesRead) || BytesRead == 0)
+            uint32 PendingBytes = 0;  // ✅ Para HasPendingData()
+            int32 BytesRead = 0;      // ✅ Para Recv()
+
+            if (Client->HasPendingData(PendingBytes) && PendingBytes >= 2)
             {
-                UE_LOG(LogTemp, Warning, TEXT("⚠️ Cliente %s fechou a conexão inesperadamente. Removendo..."), *SocketID);
-
-                OwnerServer->ClientSocketsMutex.Lock();
-                OwnerServer->ClientSockets.Remove(SocketID);
-                OwnerServer->ClientSocketsMutex.Unlock();
-
-                // 📌 Emite o evento `OnFinishConnection`
-                AsyncTask(ENamedThreads::GameThread, [this, SocketID]()
-                    {
-                        OwnerServer->OnFinishConnection.Broadcast(SocketID, TEXT("Desconhecido"));
-                    });
-
-                continue; // Ignorar leitura de pacotes
-            }
-
-            // 📌 2️⃣ Agora aguarda até receber o pacote completo
-            TArray<uint8> PacketBuffer;
-            PacketBuffer.SetNumUninitialized(PacketSize + 1); // Adiciona espaço para um caractere nulo
-
-            if (!Client->Recv(PacketBuffer.GetData(), PacketSize, BytesRead) || BytesRead != PacketSize)
-            {
-                UE_LOG(LogTemp, Warning, TEXT("⚠️ Falha ao receber pacote completo de %s. Lidos: %d / %d bytes"), *SocketID, BytesRead, PacketSize);
-                continue;
-            }
-
-            // 📌 3️⃣ Garantir que o buffer seja tratado corretamente
-            PacketBuffer[PacketSize] = '\0'; // Adiciona um terminador nulo para evitar caracteres extras
-
-            FString ReceivedData = FString(ANSI_TO_TCHAR(reinterpret_cast<const char*>(PacketBuffer.GetData())));
-
-            // 🔹 Remover espaços em branco desnecessários e caracteres extras
-            ReceivedData.TrimStartAndEndInline();
-
-            UE_LOG(LogTemp, Log, TEXT("📩 Pacote recebido de %s (%d bytes): %s"), *SocketID, PacketSize, *ReceivedData);
-
-            // 🔹 Processar o pacote na Game Thread
-            AsyncTask(ENamedThreads::GameThread, [this, ReceivedData, SocketID]()
+                if (Client->Recv(Buffer, 2, BytesRead))
                 {
-                    OwnerServer->OnClientPacketReceived.Broadcast(SocketID, ReceivedData);
-                });
+                    FMemory::Memcpy(&PacketSize, Buffer, 2);
+
+                    TArray<uint8> PacketBuffer;
+                    PacketBuffer.SetNumUninitialized(PacketSize + 1);
+
+                    if (Client->Recv(PacketBuffer.GetData(), PacketSize, BytesRead) && BytesRead == PacketSize)
+                    {
+                        PacketBuffer[PacketSize] = '\0';
+                        FString ReceivedData = FString(ANSI_TO_TCHAR(reinterpret_cast<const char*>(PacketBuffer.GetData())));
+
+                        UE_LOG(LogTemp, Log, TEXT("📩 Pacote recebido de %s (%d bytes): %s"), *SocketID, PacketSize, *ReceivedData);
+
+                        // 🔹 Processar o pacote na GameThread
+                        AsyncTask(ENamedThreads::GameThread, [this, ReceivedData, SocketID]()
+                            {
+                                OwnerServer->OnClientPacketReceived.Broadcast(SocketID, ReceivedData);
+                            });
+                    }
+                }
+            }
         }
 
+        // 📌 Agora removemos os clientes desconectados fora do loop para evitar problemas de concorrência
+        if (ClientsToRemove.Num() > 0)
+        {
+            OwnerServer->ClientSocketsMutex.Lock();
+            for (const FString& SocketID : ClientsToRemove)
+            {
+                OwnerServer->ClientSockets.Remove(SocketID);
+
+                // 📌 Emite o evento `OnFinishConnection`
+                AsyncTask(ENamedThreads::GameThread, [this, SocketID]()
+                    {
+                        OwnerServer->OnFinishConnection.Broadcast(SocketID, TEXT("Desconhecido"));
+                    });
+
+                UE_LOG(LogTemp, Log, TEXT("🔴 Cliente removido: %s"), *SocketID);
+            }
+            OwnerServer->ClientSocketsMutex.Unlock();
+        }
+
+        // Pequena pausa para evitar sobrecarga da CPU
         FPlatformProcess::Sleep(0.01);
     }
 
     return 0;
 }
+
 
 
 
