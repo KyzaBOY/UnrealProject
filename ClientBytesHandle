@@ -1,0 +1,29 @@
+ALL BYTES AND THEIR FUNCTIONS
+
+HEAD: [0x00] : Connection/Ping
+HEAD: [0x01] : Login Account
+HEAD: [0X02] : Logout Account
+HEAD: [0X03] : Create Account
+
+RECEIVED:
+
+[0x00 Area]
+0x00 - 0x01: Received Connection - Start Ping.
+0x00 - 0x02: Received Pong - Return Ping.
+
+[0x01 Area]
+0x01 - 0x01: Received Login Account Success.
+0x01 - 0x02: Received Login Account Invalid Characters.
+0x01 - 0x03: Received Login Account Wrong Login.
+0x01 - 0x04: Received Login Account Wrong Password.
+0x01 - 0x05: Received Login Account Already Connected.
+
+SEND:
+
+[0x00 Area]
+0x00 - 0x01: Send Ping.
+
+[0x01 Area]
+0x01 - 0x01: Send Login Data.
+0x02 - 0x01: Send Logout Data.
+0x03 - 0x01: Send Create Data.
