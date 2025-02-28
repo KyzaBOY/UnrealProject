@@ -9,7 +9,8 @@
 #include "MuClientGameInstance.generated.h"
 
 // 🔹 Evento Blueprint para pacotes recebidos
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnPacketReceived, FString, Data);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FOnPacketReceived, uint8, HeadCode, uint8, SubCode, FString, DataString);
+
 
 UCLASS()
 class MUCLIENT_API UMuClientGameInstance : public UGameInstance
@@ -35,6 +36,16 @@ public:
 
     UFUNCTION(BlueprintCallable, Category = "Network")
     void SendAsyncPacket(FString Data);
+
+    UFUNCTION(BlueprintCallable, Category = "Network")
+    void SendPacket(uint8 HeadCode, uint8 SubCode, const FString& DataString);
+
+    // 📌 Conversores para os Blueprints
+    UFUNCTION(BlueprintCallable, Category = "Network")
+    static FString BytesToString(const TArray<uint8>& DataBuffer);
+
+    UFUNCTION(BlueprintCallable, Category = "Network")
+    static int32 BytesToInt(const TArray<uint8>& DataBuffer);
 
 private:
     FSocket* ClientSocket;

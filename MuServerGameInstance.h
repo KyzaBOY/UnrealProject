@@ -25,6 +25,7 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnNewConnection, FString, SocketID
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnFinishConnection, FString, SocketID, FString, IP);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnClientPacketReceived, FString, SocketID, FString, Data);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FOnSQLAsyncResult, FString, Label, FString, Param, int32, Result);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_FourParams(FOnPacketReceived, FString, SocketID, uint8, HeadCode, uint8, SubCode, FString, DataString);
 
 
 UCLASS()
@@ -40,6 +41,19 @@ protected:
     virtual void Shutdown() override;
 
 public:
+    UPROPERTY(BlueprintAssignable, Category = "Network")
+    FOnPacketReceived OnPacketReceived;
+    // 📌 Novo sistema de pacotes
+    UFUNCTION(BlueprintCallable, Category = "Network")
+    void SendPacket(FString SocketID, uint8 HeadCode, uint8 SubCode, const FString& DataString);
+
+    UFUNCTION(BlueprintCallable, Category = "Network")
+    static FString BytesToString(const TArray<uint8>& DataBuffer);
+
+    UFUNCTION(BlueprintCallable, Category = "Network")
+    static int32 BytesToInt(const TArray<uint8>& DataBuffer);
+
+
     UPROPERTY(BlueprintAssignable, Category = "Network")
     FOnNewConnection OnNewConnection;
 
@@ -125,6 +139,7 @@ public:
 
     TMap<FString, double> LastPacketTime;  // Armazena o tempo do último pacote recebido
     FCriticalSection LastPacketMutex;      // 🔒 Mutex para evitar concorrência
+    TMap<FString, int32> ClientErrorCount;
 
 private:
     FSocket* ServerSocket;

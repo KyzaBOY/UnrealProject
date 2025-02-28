@@ -525,3 +525,73 @@ void UMuServerGameInstance::DisconnectPlayer(FString SocketID)
 
     UE_LOG(LogTemp, Log, TEXT("✅ Jogador %s foi desconectado com sucesso!"), *SocketID);
 }
+
+void UMuServerGameInstance::SendPacket(FString SocketID, uint8 HeadCode, uint8 SubCode, const FString& DataString)
+{
+    TArray<uint8> Data;
+    FTCHARToUTF8 Converter(*DataString);
+    Data.Append((uint8*)Converter.Get(), Converter.Length());
+
+    AsyncTask(ENamedThreads::AnyBackgroundThreadNormalTask, [this, SocketID, HeadCode, SubCode, Data]()
+        {
+            FSocket* ClientSocket = nullptr;
+
+            ClientSocketsMutex.Lock();
+            if (ClientSockets.Contains(SocketID))
+            {
+                ClientSocket = ClientSockets[SocketID];
+            }
+            ClientSocketsMutex.Unlock();
+
+            if (!ClientSocket || ClientSocket->GetConnectionState() != ESocketConnectionState::SCS_Connected)
+            {
+                UE_LOG(LogTemp, Warning, TEXT("⚠️ Cliente não está conectado: %s"), *SocketID);
+                return;
+            }
+
+            int32 PacketSize = 3 + Data.Num();
+            TArray<uint8> Buffer;
+            Buffer.SetNum(PacketSize);
+
+            Buffer[0] = PacketSize;
+            Buffer[1] = HeadCode;
+            Buffer[2] = SubCode;
+
+            if (Data.Num() > 0)
+            {
+                FMemory::Memcpy(Buffer.GetData() + 3, Data.GetData(), Data.Num());
+            }
+
+            int32 BytesSent = 0;
+            bool bSuccess = ClientSocket->Send(Buffer.GetData(), Buffer.Num(), BytesSent);
+
+            if (bSuccess)
+            {
+                UE_LOG(LogTemp, Log, TEXT("✅ Pacote enviado para %s (%d bytes)"), *SocketID, BytesSent);
+            }
+            else
+            {
+                UE_LOG(LogTemp, Error, TEXT("❌ Falha ao enviar pacote"));
+            }
+        });
+}
+
+
+
+
+
+
+FString UMuServerGameInstance::BytesToString(const TArray<uint8>& DataBuffer)
+{
+    return FString(ANSI_TO_TCHAR(reinterpret_cast<const char*>(DataBuffer.GetData())));
+}
+
+int32 UMuServerGameInstance::BytesToInt(const TArray<uint8>& DataBuffer)
+{
+    int32 Value = 0;
+    if (DataBuffer.Num() >= 4) // Garantir que temos bytes suficientes
+    {
+        FMemory::Memcpy(&Value, DataBuffer.GetData(), sizeof(int32));
+    }
+    return Value;
+}

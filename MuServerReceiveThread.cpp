@@ -32,6 +32,12 @@ uint32 MuServerReceiveThread::Run()
                 OwnerServer->ClientSockets.Add(SocketID, NewClient);
                 OwnerServer->ClientSocketsMutex.Unlock();
 
+                OwnerServer->LastPacketMutex.Lock();
+                OwnerServer->LastPacketTime.Add(SocketID, FPlatformTime::Seconds());
+                OwnerServer->LastPacketMutex.Unlock();
+
+                UE_LOG(LogTemp, Log, TEXT("📌 Cliente %s adicionado ao LastPacketTime com timestamp inicial."), *SocketID);
+
                 FString IP = TEXT("Desconhecido");
 
                 AsyncTask(ENamedThreads::GameThread, [this, SocketID, IP]()
@@ -71,48 +77,95 @@ uint32 MuServerReceiveThread::Run()
                 continue;
             }
 
-            // 🔹 Verificar se há dados pendentes antes de tentar ler
-            uint16 PacketSize = 0;
-            uint8 Buffer[2];
-
-            uint32 PendingBytes = 0;  // ✅ Para HasPendingData()
-            int32 BytesRead = 0;      // ✅ Para Recv()
-
-            if (Client->HasPendingData(PendingBytes) && PendingBytes >= 2)
+            // 🔹 Verificar se há pelo menos 3 bytes disponíveis antes de tentar ler
+            uint32 PendingBytes = 0;
+            if (!Client->HasPendingData(PendingBytes) || PendingBytes < 3)
             {
-                if (Client->Recv(Buffer, 2, BytesRead))
+                continue; // Se não há pelo menos 3 bytes pendentes, pula para o próximo cliente
+            }
+
+            // 🔹 Ler cabeçalho do pacote (tamanho, código principal e subcódigo)
+            uint8 HeaderBuffer[3];
+            int32 BytesRead = 0;
+            if (!Client->Recv(HeaderBuffer, 3, BytesRead) || BytesRead != 3)
+            {
+                // 📌 Incrementa o contador de erros para esse cliente
+                OwnerServer->ClientSocketsMutex.Lock();
+                int32& ErrorCount = OwnerServer->ClientErrorCount.FindOrAdd(SocketID);
+                ErrorCount++;
+                OwnerServer->ClientSocketsMutex.Unlock();
+
+                UE_LOG(LogTemp, Warning, TEXT("⚠️ Erro ao ler cabeçalho do pacote de %s (Tentativa %d/10)"), *SocketID, ErrorCount);
+
+                // 📌 Se o cliente atingir 10 erros consecutivos, ele será desconectado
+                if (ErrorCount >= 10)
                 {
-                    FMemory::Memcpy(&PacketSize, Buffer, 2);
+                    UE_LOG(LogTemp, Error, TEXT("❌ Cliente %s removido por excesso de erros de leitura!"), *SocketID);
 
-                    TArray<uint8> PacketBuffer;
-                    PacketBuffer.SetNumUninitialized(PacketSize + 1);
+                    // 🔹 Remover cliente do servidor
+                    OwnerServer->DisconnectPlayer(SocketID);
 
-                    if (Client->Recv(PacketBuffer.GetData(), PacketSize, BytesRead) && BytesRead == PacketSize)
-                    {
-                        PacketBuffer[PacketSize] = '\0';
-                        FString ReceivedData = FString(ANSI_TO_TCHAR(reinterpret_cast<const char*>(PacketBuffer.GetData())));
+                    // 🔹 Resetar contagem de erros
+                    OwnerServer->ClientSocketsMutex.Lock();
+                    OwnerServer->ClientErrorCount.Remove(SocketID);
+                    OwnerServer->ClientSocketsMutex.Unlock();
+                }
 
-                        OwnerServer->LastPacketMutex.Lock();
-                        OwnerServer->LastPacketTime.Add(SocketID, FPlatformTime::Seconds());
-                        OwnerServer->LastPacketMutex.Unlock();
+                continue; // Pular esse cliente e processar o próximo
+            }
 
-                        UE_LOG(LogTemp, Log, TEXT("📩 Pacote recebido de %s (%d bytes): %s"), *SocketID, PacketSize, *ReceivedData);
+            uint8 PacketSize = HeaderBuffer[0];
+            uint8 HeadCode = HeaderBuffer[1];
+            uint8 SubCode = HeaderBuffer[2];
 
-                        // 🔹 Processar o pacote na GameThread
-                        AsyncTask(ENamedThreads::GameThread, [this, ReceivedData, SocketID]()
-                            {
-                                OwnerServer->OnClientPacketReceived.Broadcast(SocketID, ReceivedData);
-                            });
-                    }
+            // 🔹 Verificar se o tamanho do pacote faz sentido
+            if (PacketSize < 3 || PacketSize > 255) // Evita pacotes inválidos
+            {
+                UE_LOG(LogTemp, Error, TEXT("❌ Pacote com tamanho inválido de %d bytes recebido de %s"), PacketSize, *SocketID);
+                continue;
+            }
+
+            // 🔹 Verificar novamente se há dados suficientes para o corpo do pacote
+            if (!Client->HasPendingData(PendingBytes) || PendingBytes < static_cast<uint32>(PacketSize - 3))
+            {
+                UE_LOG(LogTemp, Warning, TEXT("⚠️ Dados insuficientes para completar o pacote de %s"), *SocketID);
+                continue;
+            }
+
+            // 🔹 Ler os dados do pacote
+            TArray<uint8> DataBuffer;
+            DataBuffer.SetNum(PacketSize - 3);
+            if (DataBuffer.Num() > 0)
+            {
+                if (!Client->Recv(DataBuffer.GetData(), DataBuffer.Num(), BytesRead) || BytesRead != DataBuffer.Num())
+                {
+                    UE_LOG(LogTemp, Warning, TEXT("⚠️ Falha ao ler dados do pacote de %s"), *SocketID);
+                    continue;
                 }
             }
+
+            // 🔹 Atualiza o timestamp do último pacote recebido
+            OwnerServer->LastPacketMutex.Lock();
+            OwnerServer->LastPacketTime.Add(SocketID, FPlatformTime::Seconds());
+            OwnerServer->LastPacketMutex.Unlock();
+
+            OwnerServer->ClientSocketsMutex.Lock();
+            OwnerServer->ClientErrorCount.Remove(SocketID);
+            OwnerServer->ClientSocketsMutex.Unlock();
+
+            // 🔹 Processar pacotes usando switch
+            AsyncTask(ENamedThreads::GameThread, [this, SocketID, HeadCode, SubCode, DataBuffer]()
+                {
+                    ProcessReceivedPacket(SocketID, HeadCode, SubCode, DataBuffer);
+                });
+
+            UE_LOG(LogTemp, Log, TEXT("📩 Pacote recebido - Head: %d, Sub: %d"), HeadCode, SubCode);
         }
 
-        // 📌 Criamos um array de clientes para remoção por timeout
-        TArray<FString> TimeoutClients;
+        UE_LOG(LogTemp, Log, TEXT("⏳ Verificando clientes para timeout..."));
 
-        // 🔹 Pegamos o tempo atual
         double CurrentTime = FPlatformTime::Seconds();
+        TArray<FString> TimeoutClients;
 
         OwnerServer->LastPacketMutex.Lock();
         for (const auto& Pair : OwnerServer->LastPacketTime)
@@ -120,20 +173,25 @@ uint32 MuServerReceiveThread::Run()
             FString SocketID = Pair.Key;
             double LastTime = Pair.Value;
 
-            // 📌 Se passaram mais de 10 segundos desde o último pacote, remover cliente
-            if ((CurrentTime - LastTime) > 50.0)
+            UE_LOG(LogTemp, Log, TEXT("⏳ Cliente %s foi visto pela última vez há %.2f segundos."),
+                *SocketID, CurrentTime - LastTime);
+
+            if ((CurrentTime - LastTime) > 15.0)
             {
+                UE_LOG(LogTemp, Warning, TEXT("⚠️ Cliente %s excedeu o tempo limite e será removido."), *SocketID);
                 TimeoutClients.Add(SocketID);
             }
         }
         OwnerServer->LastPacketMutex.Unlock();
 
-        // 📌 Agora removemos os clientes desconectados por timeout
+        // 🔹 Removendo clientes inativos
         if (TimeoutClients.Num() > 0)
         {
             OwnerServer->ClientSocketsMutex.Lock();
             for (const FString& SocketID : TimeoutClients)
             {
+                UE_LOG(LogTemp, Warning, TEXT("🔴 Tentando remover cliente: %s"), *SocketID);
+
                 FSocket* ClientSocket = OwnerServer->ClientSockets.FindRef(SocketID);
                 if (ClientSocket)
                 {
@@ -142,15 +200,14 @@ uint32 MuServerReceiveThread::Run()
                 }
 
                 OwnerServer->ClientSockets.Remove(SocketID);
-                OwnerServer->LastPacketTime.Remove(SocketID); // ✅ Remover do mapa de timestamps também
+                OwnerServer->LastPacketTime.Remove(SocketID);
 
-                // 📌 Emite o evento `OnFinishConnection`
                 AsyncTask(ENamedThreads::GameThread, [this, SocketID]()
                     {
                         OwnerServer->OnFinishConnection.Broadcast(SocketID, TEXT("Timeout"));
                     });
 
-                UE_LOG(LogTemp, Log, TEXT("🔴 Cliente removido por timeout: %s"), *SocketID);
+                UE_LOG(LogTemp, Log, TEXT("✅ Cliente %s removido por timeout com sucesso!"), *SocketID);
             }
             OwnerServer->ClientSocketsMutex.Unlock();
         }
@@ -180,6 +237,42 @@ uint32 MuServerReceiveThread::Run()
 
     return 0;
 }
+
+void MuServerReceiveThread::ProcessReceivedPacket(FString SocketID, uint8 HeadCode, uint8 SubCode, const TArray<uint8>& DataBuffer)
+{
+    if (DataBuffer.Num() == 0)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("⚠️ Pacote recebido vazio. Ignorando."));
+        return;
+    }
+
+    // 🔹 Criar buffer com espaço extra para o null terminator
+    TArray<uint8> ProcessedData = DataBuffer;
+    ProcessedData.SetNum(DataBuffer.Num() + 1); // Adiciona 1 byte extra para o '\0'
+
+    // 🔹 Adicionar terminador nulo
+    ProcessedData[ProcessedData.Num() - 1] = '\0';
+
+    // 🔹 Converter para FString corretamente
+    FString DataString = FString(UTF8_TO_TCHAR(reinterpret_cast<const char*>(ProcessedData.GetData())));
+
+    // 🔹 Remover espaços ou caracteres extras
+    DataString.TrimStartAndEndInline();
+
+    UE_LOG(LogTemp, Log, TEXT("📩 Pacote recebido - Head: %d, Sub: %d, Dados: %s"), HeadCode, SubCode, *DataString);
+
+    // 🔹 Enviar para a Game Thread
+    AsyncTask(ENamedThreads::GameThread, [this, SocketID, HeadCode, SubCode, DataString]()
+        {
+            if (OwnerServer)
+            {
+                OwnerServer->OnPacketReceived.Broadcast(SocketID, HeadCode, SubCode, DataString);
+            }
+        });
+}
+
+
+
 
 
 

@@ -122,3 +122,64 @@ void UMuClientGameInstance::SendAsyncPacket(FString Data)
             }
         });
 }
+
+void UMuClientGameInstance::SendPacket(uint8 HeadCode, uint8 SubCode, const FString& DataString)
+{
+    TArray<uint8> Data;
+    FTCHARToUTF8 Converter(*DataString);
+    Data.Append((uint8*)Converter.Get(), Converter.Length());
+
+    AsyncTask(ENamedThreads::AnyBackgroundThreadNormalTask, [this, HeadCode, SubCode, Data]()
+        {
+            if (!ClientSocket || ClientSocket->GetConnectionState() != ESocketConnectionState::SCS_Connected)
+            {
+                UE_LOG(LogTemp, Error, TEXT("❌ Socket não conectado!"));
+                return;
+            }
+
+            int32 PacketSize = 3 + Data.Num();
+            TArray<uint8> Buffer;
+            Buffer.SetNum(PacketSize);
+
+            Buffer[0] = PacketSize;
+            Buffer[1] = HeadCode;
+            Buffer[2] = SubCode;
+
+            if (Data.Num() > 0)
+            {
+                FMemory::Memcpy(Buffer.GetData() + 3, Data.GetData(), Data.Num());
+            }
+
+            int32 BytesSent = 0;
+            bool bSuccess = ClientSocket->Send(Buffer.GetData(), Buffer.Num(), BytesSent);
+
+            if (bSuccess)
+            {
+                UE_LOG(LogTemp, Log, TEXT("✅ Pacote enviado - HeadCode: %d, SubCode: %d (%d bytes)"), HeadCode, SubCode, BytesSent);
+            }
+            else
+            {
+                UE_LOG(LogTemp, Error, TEXT("❌ Falha ao enviar pacote!"));
+            }
+        });
+}
+
+
+
+
+
+
+FString UMuClientGameInstance::BytesToString(const TArray<uint8>& DataBuffer)
+{
+    return FString(ANSI_TO_TCHAR(reinterpret_cast<const char*>(DataBuffer.GetData())));
+}
+
+int32 UMuClientGameInstance::BytesToInt(const TArray<uint8>& DataBuffer)
+{
+    int32 Value = 0;
+    if (DataBuffer.Num() >= 4)
+    {
+        FMemory::Memcpy(&Value, DataBuffer.GetData(), sizeof(int32));
+    }
+    return Value;
+}
