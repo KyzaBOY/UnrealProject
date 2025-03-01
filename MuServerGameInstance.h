@@ -85,51 +85,30 @@ public:
     UFUNCTION(BlueprintCallable, Category = "SQL")
     bool MuSQLCheck();
 
-    UFUNCTION(BlueprintCallable, Category = "SQL")
-    bool MuSQLQuery(const FString& Query);
+    UFUNCTION(BlueprintCallable, meta = (AutoCreateRefTerm = "Value1, Value2, Value3, Value4"), Category = "SQL")
+    bool MuSQLExecuteQuery(const FString& Query, const FString& Value1 = TEXT(""), const FString& Value2 = TEXT(""),
+        const FString& Value3 = TEXT(""), const FString& Value4 = TEXT(""));
+
+
+
 
     UFUNCTION(BlueprintCallable, Category = "SQL")
-    void MuSQLClose();
+    FString MuSQLFormatQuery(const FString& QueryTemplate, const TArray<FString>& Values);
 
     UFUNCTION(BlueprintCallable, Category = "SQL")
     bool MuSQLFetch();
 
     UFUNCTION(BlueprintCallable, Category = "SQL")
-    int32 MuSQLGetResult(int32 ResultIndex);
+    void MuSQLClose();
 
     UFUNCTION(BlueprintCallable, Category = "SQL")
-    int32 MuSQLGetNumber(const FString& ColumnName);
+    int32 MuSQLGetInt(const FString& ColumnName);
 
     UFUNCTION(BlueprintCallable, Category = "SQL")
-    float MuSQLGetSingle(const FString& ColumnName);
+    float MuSQLGetFloat(const FString& ColumnName);
 
     UFUNCTION(BlueprintCallable, Category = "SQL")
     FString MuSQLGetString(const FString& ColumnName);
-
-    // 🔹 Métodos SQL assíncronos
-    UFUNCTION(BlueprintCallable, Category = "SQL")
-    void SQLAsyncConnect(const FString& ODBC, const FString& User, const FString& Password);
-
-    UFUNCTION(BlueprintCallable, Category = "SQL")
-    void SQLAsyncDisconnect();
-
-    UFUNCTION(BlueprintCallable, Category = "SQL")
-    bool SQLAsyncCheck();
-
-    UFUNCTION(BlueprintCallable, Category = "SQL")
-    bool SQLAsyncQuery(const FString& Query, const FString& Label = TEXT(""), const FString& Param = TEXT(""));
-
-    UFUNCTION(BlueprintCallable, Category = "SQL")
-    int32 SQLAsyncGetResult(int32 ResultIndex);
-
-    UFUNCTION(BlueprintCallable, Category = "SQL")
-    int32 SQLAsyncGetNumber(const FString& ColumnName);
-
-    UFUNCTION(BlueprintCallable, Category = "SQL")
-    float SQLAsyncGetSingle(const FString& ColumnName);
-
-    UFUNCTION(BlueprintCallable, Category = "SQL")
-    FString SQLAsyncGetString(const FString& ColumnName);
 
     UFUNCTION(BlueprintCallable, Category = "Network")
     void DisconnectPlayer(FString SocketID);
@@ -143,7 +122,9 @@ public:
 
 private:
     FSocket* ServerSocket;
-    
+    TMap<FString, FString> SQLFetchCache; // Armazena os valores da última query executada
+    SQLHSTMT StatementHandle = SQL_NULL_HSTMT; // Mantém o Statement ativo
+
     FRunnableThread* ServerThread;
     MuServerReceiveThread* ReceiveThread;
     // 🔒 Mutex para sincronizar acessos ao mapa
@@ -151,10 +132,5 @@ private:
     // 🔒 Conexão com ODBC
     SQLHENV EnvHandle;
     SQLHDBC ConnectionHandle;
-    SQLHSTMT StatementHandle;
-
-    int32 GetColumnIndex(const FString& ColumnName);
-
-    bool ExecuteQuery(const FString& Query);
 
 };
