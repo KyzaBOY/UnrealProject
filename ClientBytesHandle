@@ -2,8 +2,11 @@ ALL BYTES AND THEIR FUNCTIONS
 
 HEAD: [0x00] : Connection/Ping
 HEAD: [0x01] : Login Account
-HEAD: [0X02] : Logout Account
-HEAD: [0X03] : Create Account
+HEAD: [0x02] : Logout Account
+HEAD: [0x03] : Create Account
+HEAD: [0x04] : Select Character Informations
+HEAD: [0x05] : Delete Character Informations
+HEAD: [0x06] : Create Character Informations
 
 RECEIVED:
 
@@ -18,6 +21,29 @@ RECEIVED:
 0x01 - 0x04: Received Login Account Wrong Password.
 0x01 - 0x05: Received Login Account Already Connected.
 
+[0x02 Area]
+0x02 - 0x01: Received Logou Account Result.
+
+[0x03 Area]
+0x03 - 0x01: Received Create Account Success.
+0x03 - 0x02: Received Create Account Already In Use.
+0x03 - 0x03: Received Create Account Invalid Characters.
+0x03 - 0x04: Received Create Account E-Mail Already In Use.
+
+[0x04 Area]
+0x04 - 0x01: Received All Characters - Nickname/Class/Level.
+0x04 - 0x02: Received Connect Character Success.
+
+[0x05 Area]
+0x05 - 0x01: Received Delete Character Success.
+0x05 - 0x02: Received Delete Character Error.
+
+[0x06 Area]
+0x06 - 0x01: Received Create Character Success.
+0x06 - 0x02: Received Create Character Nickname Already In Use.
+0x06 - 0x03: Received Create Character Class Unavailable
+0x06 - 0x04: Received Create Character Unknown Error.
+
 SEND:
 
 [0x00 Area]
@@ -25,5 +51,18 @@ SEND:
 
 [0x01 Area]
 0x01 - 0x01: Send Login Data.
+
+[0x02 Area]
 0x02 - 0x01: Send Logout Data.
+
+[0x03 Area]
 0x03 - 0x01: Send Create Data.
+
+[0x04 Area]
+0x04 - 0x01: Send Ask Characters Info
+
+[0x05 Area]
+0x05 - 0x01: Send Ask Delete Character - Nickname.
+
+[0x06 Area]
+0x06 - 0x01: Send Ask Create Character - Nickname/Class.
