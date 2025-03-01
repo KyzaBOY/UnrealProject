@@ -4,6 +4,9 @@ HEAD: [0x00] : Connection/Ping
 HEAD: [0x01] : Login Account
 HEAD: [0x02] : Logout Account
 HEAD: [0x03] : Create Account
+HEAD: [0x04] : Select Character Informations
+HEAD: [0x05] : Delete Character Informations
+HEAD: [0x06] : Create Character Informations
 
 RECEIVED:
 
@@ -11,9 +14,23 @@ RECEIVED:
 0x00 - 0x01: Receive Ping - Start Pong.
 
 [0x01 Area]
-0x01 - 0x01: Receive Login Data.
-0x02 - 0x01: Receive Logout Data.
-0x03 - 0x01: Receive Create Data.
+0x01 - 0x01: Receive Login Account - Login/Password.
+
+[0x02 Area]
+0x02 - 0x01: Receive Logout Account.
+
+[0x03 Area]
+0x03 - 0x01: Receive Create Account - Login/Password/E-Mail.
+
+[0x04 Area]
+0x04 - 0x01: Receive Ask Characters Info.
+0x04 - 0x02: Receive Ask Connect Character - Nickname.
+
+[0x05 Area]
+0x05 - 0x01: Receive Ask Delete Character - Nickname.
+
+[0x06 Area]
+0x06 - 0x01: Receive Ask Create Character - Nickname/Class.
 
 SEND:
 
@@ -32,4 +49,21 @@ SEND:
 0x02 - 0x01: Send Logout Account Result.
 
 [0x03 Area]
-0x03 - 0x01: Send Create Account Result.
+0x03 - 0x01: Send Create Account Success.
+0x03 - 0x02: Send Create Account Already In Use.
+0x03 - 0x03: Send Create Account Invalid Characters.
+0x03 - 0x04: Send Create Account E-Mail Already In Use.
+
+[0x04 Area]
+0x04 - 0x01: Send All Characters - Nickname/Class/Level.
+0x04 - 0x02: Send Connect Character Success.
+
+[0x05 Area]
+0x05 - 0x01: Send Delete Character Success.
+0x05 - 0x02: Send Delete Character Error.
+
+[0x06 Area]
+0x06 - 0x01: Send Create Character Success.
+0x06 - 0x02: Send Create Character Nickname Already In Use.
+0x06 - 0x03: Send Create Character Class Unavailable
+0x06 - 0x04: Send Create Character Unknown Error.
