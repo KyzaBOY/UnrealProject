@@ -58,6 +58,7 @@ SEND:
 [0x04 Area]
 0x04 - 0x01: Send All Characters - Nickname/Class/Level.
 0x04 - 0x02: Send Connect Character Success.
+0x04 - 0x03: Send Connect Character Failed.
 
 [0x05 Area]
 0x05 - 0x01: Send Delete Character Success.
