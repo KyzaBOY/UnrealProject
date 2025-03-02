@@ -39,10 +39,13 @@ RECEIVED:
 0x05 - 0x02: Received Delete Character Error.
 
 [0x06 Area]
-0x06 - 0x01: Received Create Character Success.
-0x06 - 0x02: Received Create Character Nickname Already In Use.
-0x06 - 0x03: Received Create Character Class Unavailable
-0x06 - 0x04: Received Create Character Unknown Error.
+0x06 - 0x01: Received Avaliable/Unavaliable Classes.
+0x06 - 0x02: Received Create Character Success.
+0x06 - 0x03: Received Create Character Nickname Already In Use.
+0x06 - 0x04: Received Create Character Class Unavailable
+0x06 - 0x06: Received Create Character Invalid Characters.
+0x06 - 0x07: Received Create Character Nickname Characters Limit.
+0x06 - 0x08: Received Create Character Unknown Error.
 
 SEND:
 
@@ -65,4 +68,5 @@ SEND:
 0x05 - 0x01: Send Ask Delete Character - Nickname.
 
 [0x06 Area]
-0x06 - 0x01: Send Ask Create Character - Nickname/Class.
+0x06 - 0x01: Send Ask Available Classes.
+0x06 - 0x02: Send Ask Create Character - Nickname/Class.
