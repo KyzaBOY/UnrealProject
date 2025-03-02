@@ -63,6 +63,7 @@ SEND:
 
 [0x04 Area]
 0x04 - 0x01: Send Ask Characters Info
+0x04 - 0x02: Send Ask Connect Character
 
 [0x05 Area]
 0x05 - 0x01: Send Ask Delete Character - Nickname.
