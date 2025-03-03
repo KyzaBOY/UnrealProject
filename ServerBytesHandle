@@ -96,8 +96,8 @@ SEND:
 0x08 - 0x01: Send Disconnected Characters To Connected Characters.
 
 [0x09 Area]
-0x09 - 0x01: Send To Connected Characters a Character Movement.
-0x09 - 0x02: Send To Connected Characters a Character Blocked Movement.
-0x09 - 0x03: Send To Connected Characters a Character Teleport.
+0x09 - 0x01: Send Characters Movement - Nickname/EndX/EndY/EndZ.
+0x09 - 0x02: Send Characters Blocked Movement - Nickname/OldX/OldY/OldZ.
+0x09 - 0x03: Send Character Teleport - Nickname/NewX/NewY/NewZ.
 
 
