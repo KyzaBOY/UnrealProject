@@ -7,6 +7,9 @@ HEAD: [0x03] : Create Account
 HEAD: [0x04] : Select Character Informations
 HEAD: [0x05] : Delete Character Informations
 HEAD: [0x06] : Create Character Informations
+HEAD: [0x07] : Connected Players Informations
+HEAD: [0x08] : Disconnect Players Informations
+HEAD: [0X09] : Movement
 
 RECEIVED:
 
@@ -47,6 +50,18 @@ RECEIVED:
 0x06 - 0x07: Received Create Character Nickname Characters Limit.
 0x06 - 0x08: Received Create Character Unknown Error.
 
+[0x07 Area]
+0x07 - 0x01: Received New Character Connection.
+0x07 - 0x02: Received All Connected Characters.
+
+[0x08 Area]
+0x08 - 0x01: Received Disconnected Character To Connected Players.
+
+[0x09 Area]
+0x09 - 0x01: Received Characters Movement.
+0x09 - 0x02: Received Characters Blocked Movement.
+0x09 - 0x03: Received Character Teleport.
+
 SEND:
 
 [0x00 Area]
@@ -71,3 +86,13 @@ SEND:
 [0x06 Area]
 0x06 - 0x01: Send Ask Available Classes.
 0x06 - 0x02: Send Ask Create Character - Nickname/Class.
+
+[0x07 Area]
+0x07 - 0x01: Send Ask Connected Characters.
+
+[0x08 Area]
+0x08 - 0x01: Send Character Disconnect.
+
+[0x09 Area]
+0x09 - 0x01: Send Movement - EndX/EndY/StepX/StepY.
+0x09 - 0x02: Send Teleport Using - NewX/NewY/Npc.
