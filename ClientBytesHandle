@@ -58,9 +58,9 @@ RECEIVED:
 0x08 - 0x01: Received Disconnected Character To Connected Players.
 
 [0x09 Area]
-0x09 - 0x01: Received Characters Movement.
-0x09 - 0x02: Received Characters Blocked Movement.
-0x09 - 0x03: Received Character Teleport.
+0x09 - 0x01: Received Characters Movement - Nickname/EndX/EndY/EndZ.
+0x09 - 0x02: Received Characters Blocked Movement - Nickname/OldX/OldY/OldZ.
+0x09 - 0x03: Received Character Teleport - Nickname/NewX/NewY/NewZ.
 
 SEND:
 
