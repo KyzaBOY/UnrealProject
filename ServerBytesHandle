@@ -44,8 +44,8 @@ RECEIVED:
 0x08 - 0x01: Receive Disconnected Character.
 
 [0x09 Area]
-0x09 - 0x01: Receive Character Movement - EndX/EndY/StepX/StepY.
-0x09 - 0x02: Receive Character Teleport - NewX/NewY/Npc.
+0x09 - 0x01: Receive Character Movement - EndX/EndY/EndZ/StepX/StepY/StepZ.
+0x09 - 0x02: Receive Character Teleport - NewX/NewY/NewZ/Npc.
 
 SEND:
 
