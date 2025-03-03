@@ -94,5 +94,5 @@ SEND:
 0x08 - 0x01: Send Character Disconnect.
 
 [0x09 Area]
-0x09 - 0x01: Send Movement - EndX/EndY/StepX/StepY.
-0x09 - 0x02: Send Teleport Using - NewX/NewY/Npc.
+0x09 - 0x01: Send Movement - EndX/EndY/EndZ/StepX/StepY/StepZ.
+0x09 - 0x02: Send Teleport Using - NewX/NewY/NewZ/Npc.
