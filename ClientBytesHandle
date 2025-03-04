@@ -56,6 +56,7 @@ RECEIVED:
 
 [0x08 Area]
 0x08 - 0x01: Received Disconnected Character To Connected Players.
+0x08 - 0x02: Received Disconnected Success To The Character.
 
 [0x09 Area]
 0x09 - 0x01: Received Characters Movement - Nickname/EndX/EndY/EndZ.
