@@ -94,6 +94,7 @@ SEND:
 
 [0x08 Area]
 0x08 - 0x01: Send Disconnected Characters To Connected Characters.
+0x08 - 0x02: Send Disconnected Success To The Character.
 
 [0x09 Area]
 0x09 - 0x01: Send Characters Movement - Nickname/EndX/EndY/EndZ.
