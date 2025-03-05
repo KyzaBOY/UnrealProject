@@ -1,0 +1,10 @@
+//Monster    Range      PositionX      PositionY       PositionZ      Comment
+14           #300       #3373          #14303          #46            #SkelletonCemiterio1
+14           #300       #3066          #11338          #46            #SkelletonCemiterio1
+14           #300       #3482          #11338          #46            #SkelletonCemiterio1
+14           #300       #3482          #11833          #46            #SkelletonCemiterio1
+14           #300       #3022          #11833          #46            #SkelletonCemiterio1
+14           #300       #8580          #91             #46            #SkelletonCemiterio1
+14           #300       #7903          #91             #46            #SkelletonCemiterio1
+14           #300       #7903          #710            #46            #SkelletonCemiterio1
+14           #300       #8580          #710            #46            #SkelletonCemiterio1
