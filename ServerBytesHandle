@@ -10,7 +10,7 @@ HEAD: [0x06] : Create Character Informations
 HEAD: [0x07] : Connected Players Informations
 HEAD: [0x08] : Disconnect Players Informations
 HEAD: [0X09] : Movement
-
+HEAD: [0x20] : Monsters
 
 RECEIVED:
 
@@ -46,6 +46,9 @@ RECEIVED:
 [0x09 Area]
 0x09 - 0x01: Receive Character Movement - EndX/EndY/EndZ/StepX/StepY/StepZ.
 0x09 - 0x02: Receive Character Teleport - NewX/NewY/NewZ/Npc.
+
+[0x20 Area]
+0x20 - 0x01: Received Attacked Monster - MonsterIndex.
 
 SEND:
 
@@ -101,4 +104,9 @@ SEND:
 0x09 - 0x02: Send Characters Blocked Movement - Nickname/OldX/OldY/OldZ.
 0x09 - 0x03: Send Character Teleport - Nickname/NewX/NewY/NewZ.
 
-
+[0x20 Area]
+0x20 - 0x01: Send All Monsters To Client - MonsterStruct.
+0x20 - 0x02: Send Monster Walk to Client - MonsterIndex/EndX/EndY.
+0x20 - 0x03: Send Monster Attack to Client - MonsterIndex/Character
+0x20 - 0x04: Send Monster Die to Client -  MonsterIndex
+0x20 - 0x05: Send Monster Chase to Client - MonsterIndex/Character.
