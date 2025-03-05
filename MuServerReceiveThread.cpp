@@ -176,7 +176,7 @@ uint32 MuServerReceiveThread::Run()
             UE_LOG(LogTemp, Log, TEXT("⏳ Cliente %s foi visto pela última vez há %.2f segundos."),
                 *SocketID, CurrentTime - LastTime);
 
-            if ((CurrentTime - LastTime) > 15.0)
+            if ((CurrentTime - LastTime) > 45.0)
             {
                 UE_LOG(LogTemp, Warning, TEXT("⚠️ Cliente %s excedeu o tempo limite e será removido."), *SocketID);
                 TimeoutClients.Add(SocketID);
@@ -270,13 +270,6 @@ void MuServerReceiveThread::ProcessReceivedPacket(FString SocketID, uint8 HeadCo
             }
         });
 }
-
-
-
-
-
-
-
 
 // 📌 Método para parar a thread
 void MuServerReceiveThread::Stop()

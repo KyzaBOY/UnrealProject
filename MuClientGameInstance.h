@@ -34,6 +34,8 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Network")
     void DisconnectFromServer();
 
+    void GracefulShutdown(); // 📌 Novo método para desligamento seguro
+
     UFUNCTION(BlueprintCallable, Category = "Network")
     void SendAsyncPacket(FString Data);
 

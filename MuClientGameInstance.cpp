@@ -15,56 +15,52 @@ void UMuClientGameInstance::Init()
 
 void UMuClientGameInstance::Shutdown()
 {
-    DisconnectFromServer();
-    Super::Shutdown();
-}
+    UE_LOG(LogTemp, Log, TEXT("📌 Iniciando Shutdown do GameInstance."));
 
-// 📌 Conectar ao Servidor
-bool UMuClientGameInstance::ConnectToServer(FString IP, int32 Port)
-{
-    ISocketSubsystem* SocketSubsystem = ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM);
-
-    ClientSocket = SocketSubsystem->CreateSocket(NAME_Stream, TEXT("MuClientSocket"), false);
-    if (!ClientSocket)
+    // 📌 Para a thread primeiro
+    if (ReceiveTask)
     {
-        UE_LOG(LogTemp, Error, TEXT("Falha ao criar o socket do cliente."));
-        return false;
+        UE_LOG(LogTemp, Log, TEXT("🔹 Parando thread de recebimento..."));
+        ReceiveTask->StopThread();
     }
 
-    TSharedPtr<FInternetAddr> ServerAddress = SocketSubsystem->CreateInternetAddr();
-    bool bIsValid;
-    ServerAddress->SetIp(*IP, bIsValid);
-    ServerAddress->SetPort(Port);
-
-    if (!bIsValid)
+    // 📌 Mata a thread de recebimento corretamente
+    if (ReceiveThread)
     {
-        UE_LOG(LogTemp, Error, TEXT("Endereço IP inválido!"));
-        return false;
+        UE_LOG(LogTemp, Log, TEXT("🔹 Matando thread..."));
+        ReceiveThread->Kill(true);
+        delete ReceiveThread;
+        ReceiveThread = nullptr;
     }
 
-    if (!ClientSocket->Connect(*ServerAddress))
-    {
-        UE_LOG(LogTemp, Error, TEXT("Falha ao conectar ao servidor %s:%d"), *IP, Port);
-        return false;
-    }
-
-    UE_LOG(LogTemp, Log, TEXT("Conectado ao servidor %s:%d!"), *IP, Port);
-
-    // Criar e iniciar a thread de recebimento
-    ReceiveTask = new MuClientReceiveThread(ClientSocket, this);
-    ReceiveThread = FRunnableThread::Create(ReceiveTask, TEXT("MuClientReceiveThread"));
-
-    return true;
-}
-
-// 📌 Desconectar do Servidor
-void UMuClientGameInstance::DisconnectFromServer()
-{
+    // 📌 Fecha e destrói o socket por último
     if (ClientSocket)
     {
+        UE_LOG(LogTemp, Log, TEXT("🔹 Fechando socket..."));
         ClientSocket->Close();
         ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM)->DestroySocket(ClientSocket);
         ClientSocket = nullptr;
+    }
+
+    // 📌 Libera a memória da task (evita dangling pointer)
+    if (ReceiveTask)
+    {
+        UE_LOG(LogTemp, Log, TEXT("🔹 Deletando task de recebimento..."));
+        delete ReceiveTask;
+        ReceiveTask = nullptr;
+    }
+
+    UE_LOG(LogTemp, Log, TEXT("✅ Cliente finalizado com sucesso."));
+    Super::Shutdown();
+}
+
+
+void UMuClientGameInstance::GracefulShutdown()
+{
+    if (ReceiveTask)
+    {
+        ReceiveTask->Stop(); // 📌 Para a thread de recebimento
+        FPlatformProcess::Sleep(0.2f); // 🔹 Aguarde um tempo para evitar crash
     }
 
     if (ReceiveThread)
@@ -74,13 +70,50 @@ void UMuClientGameInstance::DisconnectFromServer()
         ReceiveThread = nullptr;
     }
 
-    if (ReceiveTask)
+    if (ClientSocket)
     {
-        delete ReceiveTask;
-        ReceiveTask = nullptr;
+        ClientSocket->Close();
+        ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM)->DestroySocket(ClientSocket);
+        ClientSocket = nullptr;
     }
 
-    UE_LOG(LogTemp, Log, TEXT("Desconectado do servidor."));
+    UE_LOG(LogTemp, Log, TEXT("✅ Conexão finalizada com sucesso."));
+}
+
+// 📌 Conectar ao Servidor
+bool UMuClientGameInstance::ConnectToServer(FString IP, int32 Port)
+{
+    ISocketSubsystem* SocketSubsystem = ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM);
+    ClientSocket = SocketSubsystem->CreateSocket(NAME_Stream, TEXT("MuClientSocket"), false);
+
+    if (!ClientSocket)
+    {
+        UE_LOG(LogTemp, Error, TEXT("❌ Falha ao criar o socket."));
+        return false;
+    }
+
+    TSharedPtr<FInternetAddr> ServerAddress = SocketSubsystem->CreateInternetAddr();
+    bool bIsValid;
+    ServerAddress->SetIp(*IP, bIsValid);
+    ServerAddress->SetPort(Port);
+
+    if (!bIsValid || !ClientSocket->Connect(*ServerAddress))
+    {
+        UE_LOG(LogTemp, Error, TEXT("❌ Falha ao conectar ao servidor %s:%d"), *IP, Port);
+        return false;
+    }
+
+    ReceiveTask = new MuClientReceiveThread(ClientSocket, this);
+    ReceiveThread = FRunnableThread::Create(ReceiveTask, TEXT("MuClientReceiveThread"));
+
+    UE_LOG(LogTemp, Log, TEXT("✅ Conectado ao servidor %s:%d"), *IP, Port);
+    return true;
+}
+
+// 📌 Desconectar do Servidor
+void UMuClientGameInstance::DisconnectFromServer()
+{
+    GracefulShutdown();
 }
 
 // 📌 Enviar pacotes de forma assíncrona

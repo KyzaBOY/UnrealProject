@@ -13,17 +13,35 @@ MuClientReceiveThread::MuClientReceiveThread(FSocket* InSocket, UMuClientGameIns
 // Destrutor
 MuClientReceiveThread::~MuClientReceiveThread()
 {
+    StopThread();
+}
+
+// 📌 Método SEGURO para parar a thread sem crash
+void MuClientReceiveThread::StopThread()
+{
+    FScopeLock Lock(&Mutex); // 🔹 Bloqueia acesso simultâneo à thread
     bRunning = false;
+
+    if (ClientSocket)
+    {
+        UE_LOG(LogTemp, Log, TEXT("🔹 Fechando socket dentro da thread..."));
+        ClientSocket->Close();
+        ClientSocket = nullptr;
+    }
 }
 
 uint32 MuClientReceiveThread::Run()
 {
-    while (bRunning && ClientSocket && ClientSocket->GetConnectionState() == ESocketConnectionState::SCS_Connected)
+    while (bRunning)
     {
+        if (!ClientSocket || ClientSocket->GetConnectionState() != ESocketConnectionState::SCS_Connected)
+        {
+            break;
+        }
+
         uint8 HeaderBuffer[3];
         int32 BytesRead = 0;
 
-        // 🔹 Ler cabeçalho do pacote
         if (!ClientSocket->Recv(HeaderBuffer, 3, BytesRead) || BytesRead != 3)
         {
             continue;
@@ -33,56 +51,45 @@ uint32 MuClientReceiveThread::Run()
         uint8 HeadCode = HeaderBuffer[1];
         uint8 SubCode = HeaderBuffer[2];
 
-        if (PacketSize < 3 || PacketSize > 255) // Validar tamanho
+        if (PacketSize < 3 || PacketSize > 255)
         {
             continue;
         }
 
-        // 🔹 Criar buffer com espaço extra para o null terminator
         TArray<uint8> DataBuffer;
-        DataBuffer.SetNum(PacketSize - 3 + 1); // +1 para adicionar '\0'
+        DataBuffer.SetNum(PacketSize - 3 + 1);
 
-        // 🔹 Ler os dados do pacote
         int32 TotalBytesRead = 0;
         while (TotalBytesRead < (PacketSize - 3))
         {
             int32 BytesReadNow = 0;
             if (!ClientSocket->Recv(DataBuffer.GetData() + TotalBytesRead, (PacketSize - 3) - TotalBytesRead, BytesReadNow) || BytesReadNow <= 0)
             {
-                break; // Falha na recepção
+                break;
             }
             TotalBytesRead += BytesReadNow;
         }
 
-        // 🔹 Se não lemos o pacote inteiro, ignoramos
         if (TotalBytesRead != (PacketSize - 3))
         {
             continue;
         }
 
-        // 🔹 Adicionar terminador nulo para evitar lixo na conversão para FString
         DataBuffer[PacketSize - 3] = '\0';
-
-        // 🔹 Converter para FString corretamente
         FString DataString = FString(UTF8_TO_TCHAR(reinterpret_cast<const char*>(DataBuffer.GetData())));
-
-        // 🔹 Remover espaços extras e caracteres indesejados
         DataString.TrimStartAndEndInline();
 
-        UE_LOG(LogTemp, Log, TEXT("📩 Pacote recebido - Head: %d, Sub: %d, Dados: %s"), HeadCode, SubCode, *DataString);
-
-        // 🔹 Processar o pacote na Game Thread
         if (OwnerClient)
         {
             AsyncTask(ENamedThreads::GameThread, [this, HeadCode, SubCode, DataString]()
                 {
-                    OwnerClient->OnPacketReceived.Broadcast(HeadCode, SubCode, DataString);
+                    if (OwnerClient)
+                    {
+                        OwnerClient->OnPacketReceived.Broadcast(HeadCode, SubCode, DataString);
+                    }
                 });
         }
     }
 
     return 0;
 }
-
-
-

@@ -458,20 +458,37 @@ bool UMuServerGameInstance::MuSQLFetch()
     {
         for (SQLSMALLINT i = 1; i <= NumCols; i++)
         {
-            SQLWCHAR ColumnName[128];  // Nome da coluna (corrigido para SQLWCHAR)
+            SQLWCHAR ColumnName[128];  // Nome da coluna
             SQLSMALLINT ColumnNameLen;
             SQLCHAR ColumnValue[1024]; // Valor da coluna
-            SQLLEN ValueLenOrInd;  // SQLLEN para evitar erro de tipo
+            SQLLEN ValueLenOrInd;  // Indicador de comprimento do valor
 
             // Obtendo o nome da coluna
             SQLDescribeCol(StatementHandle, i, ColumnName, sizeof(ColumnName) / sizeof(SQLWCHAR), &ColumnNameLen, NULL, NULL, NULL, NULL);
 
             // Obtendo o valor da coluna
-            SQLGetData(StatementHandle, i, SQL_C_CHAR, ColumnValue, sizeof(ColumnValue), &ValueLenOrInd);
+            RetCode = SQLGetData(StatementHandle, i, SQL_C_CHAR, ColumnValue, sizeof(ColumnValue), &ValueLenOrInd);
 
             // Converter SQLWCHAR para FString
             FString ColName = FString(ColumnName);
-            FString ColValue = FString(ANSI_TO_TCHAR((char*)ColumnValue));
+            FString ColValue;
+
+            if (RetCode == SQL_SUCCESS || RetCode == SQL_SUCCESS_WITH_INFO)
+            {
+                // Se o valor NÃO for NULL, converte normalmente
+                if (ValueLenOrInd != SQL_NULL_DATA)
+                {
+                    ColValue = FString(ANSI_TO_TCHAR((char*)ColumnValue));
+                }
+                else
+                {
+                    ColValue = TEXT("NULL");  // Retorna "NULL" quando o dado for NULL no SQL
+                }
+            }
+            else
+            {
+                ColValue = TEXT("NULL");  // Retorna "NULL" caso ocorra um erro na leitura
+            }
 
             // Armazena no cache
             SQLFetchCache.Add(ColName, ColValue);
@@ -484,6 +501,7 @@ bool UMuServerGameInstance::MuSQLFetch()
     UE_LOG(LogTemp, Warning, TEXT("⚠️ Nenhum dado encontrado na última consulta."));
     return false;
 }
+
 
 
 
@@ -505,23 +523,37 @@ int32 UMuServerGameInstance::MuSQLGetInt(const FString& ColumnName)
 {
     if (SQLFetchCache.Contains(ColumnName))
     {
-        return FCString::Atoi(*SQLFetchCache[ColumnName]);
+        FString Value = SQLFetchCache[ColumnName];
+        if (Value == TEXT("NULL")) return -1;  // Se for NULL, retorna -1
+        return FCString::Atoi(*Value);
     }
 
     UE_LOG(LogTemp, Warning, TEXT("⚠️ Coluna '%s' não encontrada."), *ColumnName);
-    return -1;
+    return -1;  // Retorna -1 caso a coluna não exista
 }
+
+
 
 float UMuServerGameInstance::MuSQLGetFloat(const FString& ColumnName)
 {
     if (SQLFetchCache.Contains(ColumnName))
     {
-        return FCString::Atof(*SQLFetchCache[ColumnName]);
+        FString Value = SQLFetchCache[ColumnName];
+
+        // Se o valor for NULL, retorna um valor padrão
+        if (Value == TEXT("NULL")) return -1.1f;
+
+        // Remover qualquer separador de milhares
+        Value.ReplaceInline(TEXT(","), TEXT(""));
+
+        return FCString::Atof(*Value);
     }
 
     UE_LOG(LogTemp, Warning, TEXT("⚠️ Coluna '%s' não encontrada."), *ColumnName);
-    return -1.1f;
+    return -1.1f;  // Retorna -1.1 caso a coluna não exista
 }
+
+
 
 FString UMuServerGameInstance::MuSQLGetString(const FString& ColumnName)
 {
